@@ -1385,6 +1385,18 @@ define([
 
             image.src = url;
         },
+        loadImage: function (path) {
+            return new Promise(function (resolve) {
+                const img = new Image();
+                img.onload = () => resolve({ image: img });
+                img.onerror = (err) => resolve({ path, status: 'error', err });
+                img.id = path;
+                img.src = path;
+
+                // without appending img in document it is null
+                document.body.appendChild(img);
+            });
+        },
 
         /**
          *
@@ -1394,7 +1406,7 @@ define([
                 btoa = window.btoa || Base64.encode,
                 svg,
                 virtualNode, doc,
-                i, len, images, txt, img,
+                i, len, images, txt, img, loadedImages, allImagesLoaded,
                 canvas, ctx, ur,
                 values = [];
 
@@ -1422,28 +1434,33 @@ define([
 
             images = svgRoot.getElementsByTagName("image");
             len = images.length;
-            if (len > 0) {
-                canvas = document.createElement('canvas');
-                img = new Image();
-                for (i = 0; i < len; i++) {
-                    images[i].setAttribute("crossorigin", "anonymous");
-                    // img.src = images[i].href;
-                    // img.onload = function() {
-                    ctx = canvas.getContext('2d');
-                    canvas.width = images[i].getAttribute("width");
-                    canvas.height = images[i].getAttribute("height");
-                    try {
-                        //ctx.drawImage(images[i], 0, 0, canvas.width, canvas.height);
-                        //ctx.drawImage(document.getElementById('testimg2'), 0, 0, canvas.width, canvas.height);
 
-                    // If the image is not png, the format must be specified here
-                        ur = canvas.toDataURL();
-                        images[i].setAttribute("xlink:href", ur);
-                    } catch (err) {
-                        console.log("CORS problem! Image can not be used", err);
-                    }
+            if (len > 0) {
+                var promises = [];
+                for (let i = 0; i < len; i++) {
+                    images[i].setAttribute("crossorigin", "anonymous");
+                    promises.push(this.loadImage(images[i].href.baseVal))
                 }
-                canvas.remove();
+
+                Promise.all(promises).then((htmlImages) => {
+                    for (let i = 0; i < images.length; i++) {
+                        canvas = document.createElement('canvas');
+                        ctx = canvas.getContext('2d');
+                        canvas.width = images[i].getAttribute("width");;
+                        canvas.height = images[i].getAttribute("height");;
+                        try {
+                            var img = document.getElementById(htmlImages[i].image.id);
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                            // If the image is not png, the format must be specified here
+                            ur = canvas.toDataURL();
+                            images[i].setAttribute("xlink:href", ur);
+                        } catch (err) {
+                            console.log("CORS problem! Image can not be used", err);
+                        }
+                    }
+                    canvas.remove();
+                });
             }
 
             // Convert the SVG graphic into a string containing SVG code
@@ -1547,7 +1564,7 @@ define([
                 tmpImg.onload = function () {
                     // IE needs a pause...
                     // Seems to be broken
-                    setTimeout(function() {
+                    setTimeout(function () {
                         try {
                             ctx.drawImage(tmpImg, 0, 0, w, h);
                         } catch (err) {
@@ -1558,7 +1575,7 @@ define([
                 return this;
             }
 
-            return new Promise(function(resolve, reject) {
+            return new Promise(function (resolve, reject) {
                 try {
                     tmpImg.onload = function () {
                         ctx.drawImage(tmpImg, 0, 0, w, h);
@@ -1681,7 +1698,7 @@ define([
                 zbar.style.display = 'none';
             }
 
-            _copyCanvasToImg = function() {
+            _copyCanvasToImg = function () {
                 // Show image in img tag
                 img.src = canvas.toDataURL('image/png');
 
