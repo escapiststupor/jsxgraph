@@ -1385,6 +1385,41 @@ define([
 
             image.src = url;
         },
+
+        _getImgDataURL: function(svgRoot) {
+            var images, len, canvas, ctx,
+                img, ur, i;
+
+            images = svgRoot.getElementsByTagName("image");
+            len = images.length;
+            if (len > 0) {
+                canvas = document.createElement('canvas');
+                //img = new Image();
+                for (i = 0; i < len; i++) {
+                    images[i].setAttribute("crossorigin", "anonymous");
+                    //img.src = images[i].href;
+                    //img.onload = function() {
+                    // img.crossOrigin = "anonymous";
+                    ctx = canvas.getContext('2d');
+                    canvas.width = images[i].getAttribute("width");
+                    canvas.height = images[i].getAttribute("height");
+                    try {
+                        ctx.drawImage(images[i], 0, 0, canvas.width, canvas.height);
+                        //ctx.drawImage(document.getElementById('testimg2'), 0, 0, canvas.width, canvas.height);
+
+                        // If the image is not png, the format must be specified here
+                        ur = canvas.toDataURL();
+                        images[i].setAttribute("xlink:href", ur);
+                    } catch (err) {
+                        console.log("CORS problem! Image can not be used", err);
+                    }
+                    //};
+                }
+                //canvas.remove();
+            }
+            return true;
+        },
+
         loadImage: function (path) {
             return new Promise(function (resolve) {
                 const img = new Image();
@@ -1509,228 +1544,227 @@ define([
             }
         },
 
+        /**
+         * Convert the SVG construction into an HTML canvas image.
+         * This works for all SVG supporting browsers. Implemented as Promise.
+         * <p>
+         * For IE, it is realized as function.
+         * It works from version 9, with the exception that HTML texts
+         * are ignored on IE. The drawing is done with a delay of
+         * 200 ms. Otherwise there would be problems with IE.
+         *
+         * @param {String} canvasId Id of an HTML canvas element
+         * @param {Number} w Width in pixel of the dumped image, i.e. of the canvas tag.
+         * @param {Number} h Height in pixel of the dumped image, i.e. of the canvas tag.
+         * @param {Boolean} ignoreTexts If true, the foreignObject tag is taken out from the SVG root.
+         * This is necessary for older versions of Safari. Default: false
+         * @returns {Promise}  Promise object
+         *
+         * @example
+         * 	board.renderer.dumpToCanvas('canvas').then(function() { console.log('done'); });
+         *
+         * @example
+         *  // IE 11 example:
+         * 	board.renderer.dumpToCanvas('canvas');
+         * 	setTimeout(function() { console.log('done'); }, 400);
+         */
+        dumpToCanvas: function (canvasId, w, h, ignoreTexts) {
+            var svgRoot = this.svgRoot,
+                svg, tmpImg, cv, ctx,
+                wOrg, hOrg;
+            // DOMURL, svgBlob, url,
 
-    /**
-     * Convert the SVG construction into an HTML canvas image.
-     * This works for all SVG supporting browsers. Implemented as Promise.
-     * <p>
-     * For IE, it is realized as function.
-     * It works from version 9, with the exception that HTML texts
-     * are ignored on IE. The drawing is done with a delay of
-     * 200 ms. Otherwise there would be problems with IE.
-     *
-     * @param {String} canvasId Id of an HTML canvas element
-     * @param {Number} w Width in pixel of the dumped image, i.e. of the canvas tag.
-     * @param {Number} h Height in pixel of the dumped image, i.e. of the canvas tag.
-     * @param {Boolean} ignoreTexts If true, the foreignObject tag is taken out from the SVG root.
-     * This is necessary for older versions of Safari. Default: false
-     * @returns {Promise}  Promise object
-     *
-     * @example
-     * 	board.renderer.dumpToCanvas('canvas').then(function() { console.log('done'); });
-     *
-     * @example
-     *  // IE 11 example:
-     * 	board.renderer.dumpToCanvas('canvas');
-     * 	setTimeout(function() { console.log('done'); }, 400);
-     */
-    dumpToCanvas: function (canvasId, w, h, ignoreTexts) {
-        var svgRoot = this.svgRoot,
-            svg, tmpImg, cv, ctx,
-            wOrg, hOrg;
-        // DOMURL, svgBlob, url,
+            wOrg = svgRoot.getAttribute('width');
+            hOrg = svgRoot.getAttribute('height');
 
-        wOrg = svgRoot.getAttribute('width');
-        hOrg = svgRoot.getAttribute('height');
+            // Prepare the canvas element
+            cv = document.getElementById(canvasId);
+            // Clear the canvas
+            cv.width = cv.width;
+            ctx = cv.getContext("2d");
+            if (w !== undefined && h !== undefined) {
+                // Scale twice the CSS size to make the image crisp
+                cv.style.width = parseFloat(w) + 'px';
+                cv.style.height = parseFloat(h) + 'px';
+                cv.setAttribute('width', 2 * parseFloat(wOrg));
+                cv.setAttribute('height', 2 * parseFloat(hOrg));
+                ctx.scale(2 * wOrg / w, 2 * hOrg / h);
+            }
 
-        // Prepare the canvas element
-        cv = document.getElementById(canvasId);
-        // Clear the canvas
-        cv.width = cv.width;
-        ctx = cv.getContext("2d");
-        if (w !== undefined && h !== undefined) {
-            // Scale twice the CSS size to make the image crisp
-            cv.style.width = parseFloat(w) + 'px';
-            cv.style.height = parseFloat(h) + 'px';
-            cv.setAttribute('width', 2 * parseFloat(wOrg));
-            cv.setAttribute('height', 2 * parseFloat(hOrg));
-            ctx.scale(2 * wOrg / w, 2 * hOrg / h);
-        }
-
-        // Display the SVG string as data-uri in an HTML img.
-        tmpImg = new Image();
-        svg = this.dumpToDataURI(ignoreTexts);
-        svg.then(function(dataURI) {
-            tmpImg.src = dataURI;
-        });
-
-        // Finally, draw the HTML img in the canvas.
-        if (!('Promise' in window)) {
-            tmpImg.onload = function () {
-                // IE needs a pause...
-                // Seems to be broken
-                setTimeout(function () {
-                    try {
-                        ctx.drawImage(tmpImg, 0, 0, w, h);
-                    } catch (err) {
-                        console.log("screenshots not longer supported on IE");
-                    }
-                }, 200);
-            };
-            return this;
-        }
-
-        return new Promise(function (resolve, reject) {
-            try {
+            // Display the SVG string as data-uri in an HTML img.
+            tmpImg = new Image();
+            svg = this.dumpToDataURI(ignoreTexts);
+            
+            svg.then(function(dataURI) {
+                tmpImg.src = dataURI;
+            });
+            // Finally, draw the HTML img in the canvas.
+            if (!('Promise' in window)) {
                 tmpImg.onload = function () {
-                    ctx.drawImage(tmpImg, 0, 0, w, h);
-                    resolve();
+                    // IE needs a pause...
+                    // Seems to be broken
+                    setTimeout(function() {
+                        try {
+                            ctx.drawImage(tmpImg, 0, 0, w, h);
+                        } catch (err) {
+                            console.log("screenshots not longer supported on IE");
+                        }
+                    }, 200);
                 };
-            } catch (e) {
-                reject(e);
+                return this;
             }
-        });
 
-    },
+            return new Promise(function(resolve, reject) {
+                try {
+                    tmpImg.onload = function () {
+                        ctx.drawImage(tmpImg, 0, 0, w, h);
+                        resolve();
+                    };
+                } catch (e) {
+                    reject(e);
+                }
+            });
 
-    /**
-     * Display SVG image in html img-tag which enables
-     * easy download for the user.
-     *
-     * Support:
-     * <ul>
-     * <li> IE: No
-     * <li> Edge: full
-     * <li>Firefox: full
-     * <li> Chrome: full
-     * <li> Safari: full (No text support in versions prior to 12).
-     * </ul>
-     *
-     * @param {JXG.Board} board Link to the board.
-     * @param {String} imgId Optional id of an img object. If given and different from the empty string,
-     * the screenshot is copied to this img object. The width and height will be set to the values of the
-     * JSXGraph container.
-     * @param {Boolean} ignoreTexts If set to true, the foreignObject is taken out of the
-     *  SVGRoot and texts are not displayed. This is mandatory for Safari. Default: false
-     * @return {Object}       the svg renderer object
-     */
-    screenshot: function (board, imgId, ignoreTexts) {
-        var node,
-            doc = this.container.ownerDocument,
-            parent = this.container.parentNode,
-            cPos,
-            canvas, id,
-            img,
-            button, buttonText,
-            w, h,
-            bas = board.attr.screenshot,
-            zbar, zbarDisplay, cssTxt,
-            newImg = false,
-            _copyCanvasToImg,
-            isDebug = false;
+        },
 
-        if (this.type === 'no') {
-            return this;
-        }
+        /**
+         * Display SVG image in html img-tag which enables
+         * easy download for the user.
+         *
+         * Support:
+         * <ul>
+         * <li> IE: No
+         * <li> Edge: full
+         * <li>Firefox: full
+         * <li> Chrome: full
+         * <li> Safari: full (No text support in versions prior to 12).
+         * </ul>
+         *
+         * @param {JXG.Board} board Link to the board.
+         * @param {String} imgId Optional id of an img object. If given and different from the empty string,
+         * the screenshot is copied to this img object. The width and height will be set to the values of the
+         * JSXGraph container.
+         * @param {Boolean} ignoreTexts If set to true, the foreignObject is taken out of the
+         *  SVGRoot and texts are not displayed. This is mandatory for Safari. Default: false
+         * @return {Object}       the svg renderer object
+         */
+        screenshot: function (board, imgId, ignoreTexts) {
+            var node,
+                doc = this.container.ownerDocument,
+                parent = this.container.parentNode,
+                cPos,
+                canvas, id,
+                img,
+                button, buttonText,
+                w, h,
+                bas = board.attr.screenshot,
+                zbar, zbarDisplay, cssTxt,
+                newImg = false,
+                _copyCanvasToImg,
+                isDebug = false;
 
-        w = bas.scale * parseFloat(this.container.style.width);
-        h = bas.scale * parseFloat(this.container.style.height);
+            if (this.type === 'no') {
+                return this;
+            }
 
-        if (imgId === undefined || imgId === '') {
-            newImg = true;
-            img = new Image(); //doc.createElement('img');
-            img.style.width = w + 'px';
-            img.style.height = h + 'px';
-        } else {
-            newImg = false;
-            img = doc.getElementById(imgId);
-        }
-        // img.crossOrigin = 'anonymous';
+            w = bas.scale * parseFloat(this.container.style.width);
+            h = bas.scale * parseFloat(this.container.style.height);
 
-        // Create div which contains canvas element and close button
-        if (newImg) {
-            node = doc.createElement('div');
-            node.style.cssText = bas.css;
-            node.style.width = (w) + 'px';
-            node.style.height = (h) + 'px';
-            node.style.zIndex = this.container.style.zIndex + 120;
+            if (imgId === undefined || imgId === '') {
+                newImg = true;
+                img = new Image(); //doc.createElement('img');
+                img.style.width = w + 'px';
+                img.style.height = h + 'px';
+            } else {
+                newImg = false;
+                img = doc.getElementById(imgId);
+            }
+            // img.crossOrigin = 'anonymous';
 
-            // Position the div exactly over the JSXGraph board
-            cPos = board.getCoordsTopLeftCorner();
-            node.style.position = 'absolute';
-            node.style.left = (cPos[0]) + 'px';
-            node.style.top = (cPos[1]) + 'px';
-        }
+            // Create div which contains canvas element and close button
+            if (newImg) {
+                node = doc.createElement('div');
+                node.style.cssText = bas.css;
+                node.style.width = (w) + 'px';
+                node.style.height = (h) + 'px';
+                node.style.zIndex = this.container.style.zIndex + 120;
 
-        if (!isDebug) {
-            // Create canvas element and add it to the DOM
-            // It will be removed after the image has been stored.
-            canvas = doc.createElement('canvas');
-            id = Math.random().toString(36).substr(2, 5);
-            canvas.setAttribute('id', id);
-            canvas.setAttribute('width', w);
-            canvas.setAttribute('height', h);
-            canvas.style.width = w + 'px';
-            canvas.style.height = w + 'px';
-            canvas.style.display = 'none';
-            parent.appendChild(canvas);
-        } else {
-            // Debug: use canvas element 'jxgbox_canvas' from jsxdev/dump.html
-            id = 'jxgbox_canvas';
-            canvas = document.getElementById(id);
-        }
+                // Position the div exactly over the JSXGraph board
+                cPos = board.getCoordsTopLeftCorner();
+                node.style.position = 'absolute';
+                node.style.left = (cPos[0]) + 'px';
+                node.style.top = (cPos[1]) + 'px';
+            }
 
-        if (newImg) {
-            // Create close button
-            button = doc.createElement('span');
-            buttonText = doc.createTextNode('\u2716');
-            button.style.cssText = bas.cssButton;
-            button.appendChild(buttonText);
-            button.onclick = function () {
-                node.parentNode.removeChild(node);
+            if (!isDebug) {
+                // Create canvas element and add it to the DOM
+                // It will be removed after the image has been stored.
+                canvas = doc.createElement('canvas');
+                id = Math.random().toString(36).substr(2, 5);
+                canvas.setAttribute('id', id);
+                canvas.setAttribute('width', w);
+                canvas.setAttribute('height', h);
+                canvas.style.width = w + 'px';
+                canvas.style.height = w + 'px';
+                canvas.style.display = 'none';
+                parent.appendChild(canvas);
+            } else {
+                // Debug: use canvas element 'jxgbox_canvas' from jsxdev/dump.html
+                id = 'jxgbox_canvas';
+                canvas = document.getElementById(id);
+            }
+
+            if (newImg) {
+                // Create close button
+                button = doc.createElement('span');
+                buttonText = doc.createTextNode('\u2716');
+                button.style.cssText = bas.cssButton;
+                button.appendChild(buttonText);
+                button.onclick = function () {
+                    node.parentNode.removeChild(node);
+                };
+
+                // Add all nodes
+                node.appendChild(img);
+                node.appendChild(button);
+                parent.appendChild(node);
+            }
+
+            // Hide navigation bar in board
+            zbar = document.getElementById(this.container.id + '_navigationbar');
+            if (Type.exists(zbar)) {
+                zbarDisplay = zbar.style.display;
+                zbar.style.display = 'none';
+            }
+
+            _copyCanvasToImg = function() {
+                // Show image in img tag
+                img.src = canvas.toDataURL('image/png');
+
+                // Remove canvas node
+                if (!isDebug) {
+                    parent.removeChild(canvas);
+                }
             };
 
-            // Add all nodes
-            node.appendChild(img);
-            node.appendChild(button);
-            parent.appendChild(node);
-        }
-
-        // Hide navigation bar in board
-        zbar = document.getElementById(this.container.id + '_navigationbar');
-        if (Type.exists(zbar)) {
-            zbarDisplay = zbar.style.display;
-            zbar.style.display = 'none';
-        }
-
-        _copyCanvasToImg = function () {
-            // Show image in img tag
-            img.src = canvas.toDataURL('image/png');
-
-            // Remove canvas node
-            if (!isDebug) {
-                parent.removeChild(canvas);
+            // Create screenshot in image element
+            if ('Promise' in window) {
+                this.dumpToCanvas(id, w, h, ignoreTexts).then(_copyCanvasToImg);
+            } else {
+                // IE
+                this.dumpToCanvas(id, w, h, ignoreTexts);
+                setTimeout(_copyCanvasToImg, 200);
             }
-        };
 
-        // Create screenshot in image element
-        if ('Promise' in window) {
-            this.dumpToCanvas(id, w, h, ignoreTexts).then(_copyCanvasToImg);
-        } else {
-            // IE
-            this.dumpToCanvas(id, w, h, ignoreTexts);
-            setTimeout(_copyCanvasToImg, 200);
+            // Show navigation bar in board
+            if (Type.exists(zbar)) {
+                zbar.style.display = zbarDisplay;
+            }
+
+            return this;
         }
-
-        // Show navigation bar in board
-        if (Type.exists(zbar)) {
-            zbar.style.display = zbarDisplay;
-        }
-
-        return this;
-    }
 
     });
 
-return JXG.SVGRenderer;
+    return JXG.SVGRenderer;
 });
