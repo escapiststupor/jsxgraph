@@ -1422,7 +1422,7 @@ define([
 
         loadImage: function (path) {
             return new Promise(function (resolve) {
-                const img = new Image();
+                var img = new Image();
                 img.onload = () => resolve({ image: img });
                 img.onerror = (err) => resolve({ path, status: 'error', err });
                 img.crossOrigin = 'anonymous';
@@ -1442,8 +1442,7 @@ define([
                 svg,
                 virtualNode, doc,
                 i, len, images, txt,
-                canvas, ctx, ur,
-                self,
+                self, promises,
                 values = [];
 
             // Move all HTML tags (beside the SVG root) of the container
@@ -1471,77 +1470,83 @@ define([
             images = svgRoot.getElementsByTagName("image");
             len = images.length;
 
-            if (len > 0) {
-                var promises = [];
-                for (let i = 0; i < len; i++) {
-                    promises.push(this.loadImage(images[i].href.baseVal));
-                }
-                self = this;
-                return Promise.all(promises).then(function (htmlImages) {
-                    for (let i = 0; i < images.length; i++) {
-                        const img = htmlImages[i].image;
-                        canvas = document.createElement('canvas');
-                        ctx = canvas.getContext('2d');
-                        canvas.width = images[i].getAttribute("width");
-                        canvas.height = images[i].getAttribute("height");
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            // Handle images
+            promises = [];
+            // Generate one promise for each image
+            for (i = 0; i < len; i++) {
+                promises.push(this.loadImage(images[i].href.baseVal));
+            }
+            self = this;
+            // Whenn all images are loaded:
+            // * dump the images to canvas
+            // * Generate the image as _getDataUri
+            // * Replace the src of the SVG images by the dataURLs
+            return Promise.all(promises).then(function (htmlImages) {
+                var i, img, canvas, ctx, ur;
 
-                        // (not necessary?) If the image is not png, the format must be specified here
-                        try {
-                            ur = canvas.toDataURL();
-                            images[i].setAttribute("xlink:href", ur);
-                        } catch (err) {
-                            console.log("CORS problem! Image can not be used", err);
-                        } finally {
-                            // make sure the image is deleted from dom
+                canvas = document.createElement('canvas');
+                ctx = canvas.getContext('2d');
+                for (i = 0; i < images.length; i++) {
+                    img = htmlImages[i].image;
+                    canvas.width = images[i].getAttribute("width");
+                    canvas.height = images[i].getAttribute("height");
+                    try {
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        ur = canvas.toDataURL();
+                        // Replace the href of the SVG image by the dataURL
+                        images[i].setAttribute("xlink:href", ur);
+                    } catch (err) {
+                        console.log("CORS problem! An image can not be used");
+                    } finally {
+                        if (img !== undefined && img.parentNode != undefined) {
                             img.parentNode.removeChild(img);
                         }
                     }
-                    canvas.remove();
-                }).then(function () {
-                    // Convert the SVG graphic into a string containing SVG code
-                    svgRoot.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-                    svg = new XMLSerializer().serializeToString(svgRoot);
+                }
+                canvas.remove();
+            }).then(function () {
+                // Convert the SVG graphic into a string containing SVG code
+                svgRoot.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+                svg = new XMLSerializer().serializeToString(svgRoot);
 
-                    if (ignoreTexts !== true) {
-                        // Handle SVG texts
-                        // Insert all value attributes back into the svg string
-                        len = values.length;
-                        for (i = 0; i < len; i++) {
-                            svg = svg.replace('id="' + values[i][0] + '"', 'id="' + values[i][0] + '" value="' + values[i][1] + '"');
-                        }
+                if (ignoreTexts !== true) {
+                    // Handle SVG texts
+                    // Insert all value attributes back into the svg string
+                    len = values.length;
+                    for (i = 0; i < len; i++) {
+                        svg = svg.replace('id="' + values[i][0] + '"', 'id="' + values[i][0] + '" value="' + values[i][1] + '"');
                     }
+                }
 
-                    if (false) {
-                        // Debug: use example svg image
-                        svg = '<svg xmlns="http://www.w3.org/2000/svg" version="1.0" width="220" height="220"><rect width="66" height="30" x="21" y="32" stroke="#204a87" stroke-width="2" fill="none" /></svg>';
+                if (false) {
+                    // Debug: use example svg image
+                    svg = '<svg xmlns="http://www.w3.org/2000/svg" version="1.0" width="220" height="220"><rect width="66" height="30" x="21" y="32" stroke="#204a87" stroke-width="2" fill="none" /></svg>';
+                }
+
+                // In IE we have to remove the namespace again.
+                if ((svg.match(/xmlns=\"http:\/\/www.w3.org\/2000\/svg\"/g) || []).length > 1) {
+                    svg = svg.replace(/xmlns=\"http:\/\/www.w3.org\/2000\/svg\"/g, '');
+                }
+
+                // Safari fails if the svg string contains a "&nbsp;"
+                // Obsolete with Safari 12+
+                svg = svg.replace(/&nbsp;/g, ' ');
+
+                // Move all HTML tags back from
+                // the foreignObject element to the container
+                if (Type.exists(self.foreignObjLayer) && self.foreignObjLayer.hasChildNodes()) {
+                    if (ignoreTexts === true) {
+                        // Put foreignObjLayer back into the SVG
+                        svgRoot.appendChild(self.foreignObjLayer);
                     }
-
-                    // In IE we have to remove the namespace again.
-                    if ((svg.match(/xmlns=\"http:\/\/www.w3.org\/2000\/svg\"/g) || []).length > 1) {
-                        svg = svg.replace(/xmlns=\"http:\/\/www.w3.org\/2000\/svg\"/g, '');
+                    // Restore all HTML elements
+                    while (self.foreignObjLayer.firstChild) {
+                        self.container.appendChild(self.foreignObjLayer.firstChild);
                     }
+                }
 
-                    // Safari fails if the svg string contains a "&nbsp;"
-                    // Obsolete with Safari 12+
-                    svg = svg.replace(/&nbsp;/g, ' ');
-
-                    // Move all HTML tags back from
-                    // the foreignObject element to the container
-                    if (Type.exists(self.foreignObjLayer) && self.foreignObjLayer.hasChildNodes()) {
-                        if (ignoreTexts === true) {
-                            // Put foreignObjLayer back into the SVG
-                            svgRoot.appendChild(self.foreignObjLayer);
-                        }
-                        // Restore all HTML elements
-                        while (self.foreignObjLayer.firstChild) {
-                            self.container.appendChild(self.foreignObjLayer.firstChild);
-                        }
-                    }
-
-                    return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
-                });
-            }
+                return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+            });
         },
 
         /**
@@ -1594,7 +1599,7 @@ define([
             // Display the SVG string as data-uri in an HTML img.
             tmpImg = new Image();
             svg = this.dumpToDataURI(ignoreTexts);
-            
+
             svg.then(function(dataURI) {
                 tmpImg.src = dataURI;
             });
