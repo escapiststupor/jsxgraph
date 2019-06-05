@@ -1399,8 +1399,10 @@ define([
          * dataURI image of type "data:image/svg+xml;base64". Supports on non-IE
          * also texts of type HTML and images. External imags can only be included
          * if their server policy allows export (CORS), i.e. the CORS header contains
-         * the needed permission in 
+         * the needed permission in
          * <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin">'Access-Control-Allow-Origin'</a>.
+         * Also, it seems that the page containing the JSXgraph construction has
+         * to use https as protocol.
          *
          * @param {Boolean} ignoreTexts If true, the foreignObject tag is taken out from the SVG root.
          * This is necessary for older versions of Safari. Default: false
