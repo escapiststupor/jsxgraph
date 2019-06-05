@@ -1474,49 +1474,52 @@ define([
             images = svgRoot.getElementsByTagName("image");
             len = images.length;
 
+            // Core of the dump method.
+            // It is called after the images have been converted to
+            // dataURIs.
             _finalize_dumpToDataURI = function () {
-                    // Convert the SVG graphic into a string containing SVG code
-                    svgRoot.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-                    svg = new XMLSerializer().serializeToString(svgRoot);
+                // Convert the SVG graphic into a string containing SVG code
+                svgRoot.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+                svg = new XMLSerializer().serializeToString(svgRoot);
 
-                    if (ignoreTexts !== true) {
-                        // Handle SVG texts
-                        // Insert all value attributes back into the svg string
-                        len = values.length;
-                        for (i = 0; i < len; i++) {
-                            svg = svg.replace('id="' + values[i][0] + '"', 'id="' + values[i][0] + '" value="' + values[i][1] + '"');
-                        }
+                if (ignoreTexts !== true) {
+                    // Handle SVG texts
+                    // Insert all value attributes back into the svg string
+                    len = values.length;
+                    for (i = 0; i < len; i++) {
+                        svg = svg.replace('id="' + values[i][0] + '"', 'id="' + values[i][0] + '" value="' + values[i][1] + '"');
                     }
+                }
 
-                    if (false) {
-                        // Debug: use example svg image
-                        svg = '<svg xmlns="http://www.w3.org/2000/svg" version="1.0" width="220" height="220"><rect width="66" height="30" x="21" y="32" stroke="#204a87" stroke-width="2" fill="none" /></svg>';
+                if (false) {
+                    // Debug: use example svg image
+                    svg = '<svg xmlns="http://www.w3.org/2000/svg" version="1.0" width="220" height="220"><rect width="66" height="30" x="21" y="32" stroke="#204a87" stroke-width="2" fill="none" /></svg>';
+                }
+
+                // In IE we have to remove the namespace again.
+                if ((svg.match(/xmlns=\"http:\/\/www.w3.org\/2000\/svg\"/g) || []).length > 1) {
+                    svg = svg.replace(/xmlns=\"http:\/\/www.w3.org\/2000\/svg\"/g, '');
+                }
+
+                // Safari fails if the svg string contains a "&nbsp;"
+                // Obsolete with Safari 12+
+                svg = svg.replace(/&nbsp;/g, ' ');
+
+                // Move all HTML tags back from
+                // the foreignObject element to the container
+                if (Type.exists(self.foreignObjLayer) && self.foreignObjLayer.hasChildNodes()) {
+                    if (ignoreTexts === true) {
+                        // Put foreignObjLayer back into the SVG
+                        svgRoot.appendChild(self.foreignObjLayer);
                     }
-
-                    // In IE we have to remove the namespace again.
-                    if ((svg.match(/xmlns=\"http:\/\/www.w3.org\/2000\/svg\"/g) || []).length > 1) {
-                        svg = svg.replace(/xmlns=\"http:\/\/www.w3.org\/2000\/svg\"/g, '');
+                    // Restore all HTML elements
+                    while (self.foreignObjLayer.firstChild) {
+                        self.container.appendChild(self.foreignObjLayer.firstChild);
                     }
+                }
 
-                    // Safari fails if the svg string contains a "&nbsp;"
-                    // Obsolete with Safari 12+
-                    svg = svg.replace(/&nbsp;/g, ' ');
-
-                    // Move all HTML tags back from
-                    // the foreignObject element to the container
-                    if (Type.exists(self.foreignObjLayer) && self.foreignObjLayer.hasChildNodes()) {
-                        if (ignoreTexts === true) {
-                            // Put foreignObjLayer back into the SVG
-                            svgRoot.appendChild(self.foreignObjLayer);
-                        }
-                        // Restore all HTML elements
-                        while (self.foreignObjLayer.firstChild) {
-                            self.container.appendChild(self.foreignObjLayer.firstChild);
-                        }
-                    }
-
-                    return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
-                };
+                return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+            };
 
             self = this;
             // IE11- version without promises.
