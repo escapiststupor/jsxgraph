@@ -1369,57 +1369,6 @@ define([
             return values;
         },
 
-        _getDataUri: function (url, callback) {
-            var image = new Image();
-
-            image.onload = function () {
-                var canvas = document.createElement('canvas');
-                canvas.width = this.naturalWidth; // or 'width' if you want a special/scaled size
-                canvas.height = this.naturalHeight; // or 'height' if you want a special/scaled size
-
-                canvas.getContext('2d').drawImage(this, 0, 0);
-
-                callback(canvas.toDataURL('image/png'));
-                canvas.remove();
-            };
-
-            image.src = url;
-        },
-
-        _getImgDataURL: function(svgRoot) {
-            var images, len, canvas, ctx,
-                img, ur, i;
-
-            images = svgRoot.getElementsByTagName("image");
-            len = images.length;
-            if (len > 0) {
-                canvas = document.createElement('canvas');
-                //img = new Image();
-                for (i = 0; i < len; i++) {
-                    images[i].setAttribute("crossorigin", "anonymous");
-                    //img.src = images[i].href;
-                    //img.onload = function() {
-                    // img.crossOrigin = "anonymous";
-                    ctx = canvas.getContext('2d');
-                    canvas.width = images[i].getAttribute("width");
-                    canvas.height = images[i].getAttribute("height");
-                    try {
-                        ctx.drawImage(images[i], 0, 0, canvas.width, canvas.height);
-                        //ctx.drawImage(document.getElementById('testimg2'), 0, 0, canvas.width, canvas.height);
-
-                        // If the image is not png, the format must be specified here
-                        ur = canvas.toDataURL();
-                        images[i].setAttribute("xlink:href", ur);
-                    } catch (err) {
-                        console.log("CORS problem! Image can not be used", err);
-                    }
-                    //};
-                }
-                //canvas.remove();
-            }
-            return true;
-        },
-
         /**
          * Promise to load an image URI into an (invisible) HTML image object.
          * From there it will be converted into a dataURI subsequently.
@@ -1449,7 +1398,8 @@ define([
          * Convert the SVG code of a JSXGraph construction into a base64 encoded
          * dataURI image of type "data:image/svg+xml;base64". Supports on non-IE
          * also texts of type HTML and images. External imags can only be included
-         * if their server policy allows export (CORS).
+         * if their server policy allows export (CORS), i.e. the CORS header contains
+         * 'Access-Control-Allow-Origin'.
          *
          * @param {Boolean} ignoreTexts If true, the foreignObject tag is taken out from the SVG root.
          * This is necessary for older versions of Safari. Default: false
@@ -1564,7 +1514,7 @@ define([
 
             // When all images are loaded:
             // * dump the images to canvas
-            // * Generate the image as _getDataUri
+            // * Generate the image as dataUri
             // * Replace the src of the SVG images by the dataURLs
             return Promise.all(promises).then(function (htmlImages) {
                 var i, img, canvas, ctx, ur;
