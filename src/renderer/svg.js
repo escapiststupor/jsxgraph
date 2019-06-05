@@ -1420,6 +1420,15 @@ define([
             return true;
         },
 
+        /**
+         * Promise to load an image URI into an (invisible) HTML image object.
+         * From there it will be converted into a dataURI subsequently.
+         * @param {String} path Path / URI of the image
+         * @returns {Promise}  Promise object
+         * @private
+         * @see JXG.SVGRenderer#dumpToDataURI
+         * @see JXG.SVGRenderer#dumpToCanvas
+         */
         loadImage: function (path) {
             return new Promise(function (resolve) {
                 var img = new Image();
@@ -1437,9 +1446,21 @@ define([
         },
 
         /**
+         * Convert the SVG code of a JSXGraph construction into a base64 encoded
+         * dataURI image of type "data:image/svg+xml;base64". Supports on non-IE
+         * also texts of type HTML and images. External imags can only be included
+         * if their server policy allows export (CORS).
          *
+         * @param {Boolean} ignoreTexts If true, the foreignObject tag is taken out from the SVG root.
+         * This is necessary for older versions of Safari. Default: false
+         * @param {Boolean} ignoreImages If true, image objects are not included. Default: false
+         * @returns {String} base64 encoded dataURI of type "data:image/svg+xml;base64".
+         * @see JXG.SVGRenderer#dumpToCanvas
+         *
+         * @example
+         *     var svg = board.renderer.dumpToDataURI();
          */
-        dumpToDataURI: function (ignoreTexts) {
+        dumpToDataURI: function (ignoreTexts, ignoreImages) {
             var svgRoot = this.svgRoot,
                 btoa = window.btoa || Base64.encode,
                 svg,
@@ -1471,8 +1492,13 @@ define([
                 }
             }
 
-            images = svgRoot.getElementsByTagName("image");
-            len = images.length;
+            if (ignoreImages === true) {
+                images = [];
+                len = 0;
+            } else {
+                images = svgRoot.getElementsByTagName("image");
+                len = images.length;
+            }
 
             // Core of the dump method.
             // It is called after the images have been converted to
@@ -1567,20 +1593,20 @@ define([
         },
 
         /**
-         * Convert the SVG construction into an HTML canvas image.
-         * This works for all SVG supporting browsers. Implemented as Promise.
-         * <p>
-         * For IE, it is realized as function.
-         * It works from version 9, with the exception that HTML texts
-         * are ignored on IE. The drawing is done with a delay of
-         * 200 ms. Otherwise there would be problems with IE.
+         * Display the SVG code of a JXG construction in an HTML canvas element.
+         * This works for all SVG supporting browsers. Implemented as promise,
+         * for IE, it is realized as function.
+         * It works on all non-ancient browsers, also from IE version 9, with the exception that HTML texts
+         * and images are ignored on IE.
          *
          * @param {String} canvasId Id of an HTML canvas element
          * @param {Number} w Width in pixel of the dumped image, i.e. of the canvas tag.
          * @param {Number} h Height in pixel of the dumped image, i.e. of the canvas tag.
          * @param {Boolean} ignoreTexts If true, the foreignObject tag is taken out from the SVG root.
          * This is necessary for older versions of Safari. Default: false
+         * @param {Boolean} ignoreImages If true, image objects are not included. Default: false
          * @returns {Promise}  Promise object
+         * @see JXG.SVGRenderer#dumpToDataURI
          *
          * @example
          * 	board.renderer.dumpToCanvas('canvas').then(function() { console.log('done'); });
@@ -1590,7 +1616,7 @@ define([
          * 	board.renderer.dumpToCanvas('canvas');
          * 	setTimeout(function() { console.log('done'); }, 400);
          */
-        dumpToCanvas: function (canvasId, w, h, ignoreTexts) {
+        dumpToCanvas: function (canvasId, w, h, ignoreTexts, ignoreImages) {
             var svgRoot = this.svgRoot,
                 svg, tmpImg, cv, ctx,
                 wOrg, hOrg;
@@ -1615,7 +1641,7 @@ define([
 
             // Display the SVG string as data-uri in an HTML img.
             tmpImg = new Image();
-            svg = this.dumpToDataURI(ignoreTexts);
+            svg = this.dumpToDataURI(ignoreTexts, ignoreImages);
 
             // Finally, draw the HTML img in the canvas.
 
@@ -1635,7 +1661,7 @@ define([
                 return this;
             }
 
-            // Version with Promises
+            // Version with promises
             svg.then(function(dataURI) {
                 tmpImg.src = dataURI;
             });
